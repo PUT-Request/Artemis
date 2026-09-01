@@ -1,0 +1,35 @@
+{{define "upstreams.html"}}{{template "header.html" .}}
+<h4 class="mb-3">Upstream DNS servers</h4>
+<p class="text-muted">Queries are forwarded to the first working upstream, retrying with the next on failure.</p>
+
+<div class="card mb-4"><div class="card-body p-0">
+  <table class="table mb-0">
+    <thead class=""><tr><th>#</th><th>Server</th><th></th></tr></thead>
+    <tbody>
+    {{range $i, $u := .Data.Upstreams}}
+      <tr>
+        <td>{{add $i 1}}</td>
+        <td class="mono">{{$u}}</td>
+        <td class="text-end">
+          <form method="post" action="/upstreams" class="d-inline">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="action" value="remove">
+            <input type="hidden" name="server" value="{{$u}}">
+            <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-x-lg"></i></button>
+          </form>
+        </td>
+      </tr>
+    {{else}}<tr><td colspan="3" class="text-muted text-center">No upstreams configured</td></tr>{{end}}
+    </tbody>
+  </table>
+</div></div>
+
+<div class="card"><div class="card-body">
+  <form method="post" action="/upstreams" class="row g-2">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="action" value="add">
+    <div class="col-md-5"><input class="form-control" name="server" placeholder="e.g. 1.1.1.1:53 or 94.140.14.14:53" required></div>
+    <div class="col-auto"><button class="btn btn-primary" type="submit"><i class="bi bi-plus-lg"></i> Add upstream</button></div>
+  </form>
+</div></div>
+{{template "footer.html" .}}{{end}}

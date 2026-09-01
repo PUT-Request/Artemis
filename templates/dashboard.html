@@ -1,0 +1,37 @@
+{{define "dashboard.html"}}{{template "header.html" .}}
+<h4 class="mb-3">Dashboard</h4>
+<p class="text-muted mb-3">
+  DNS <span class="mono">{{.Data.DNS}}</span> &middot; DoH <span class="mono">{{.Data.DoH}}</span>
+  &middot; HTTP <span class="mono">{{.Data.HTTP}}</span> &middot; Web UI <span class="mono">{{.Data.WebUI}}</span>
+</p>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3"><div class="card"><div class="card-body">
+    <div class="text-muted small">Upstreams</div>
+    <div class="stat-num">{{.Data.Cfg.Upstreams}}</div>
+  </div></div></div>
+  <div class="col-6 col-md-3"><div class="card"><div class="card-body">
+    <div class="text-muted small">Redirects</div>
+    <div class="stat-num">{{.Data.Cfg.Redirects}}</div>
+  </div></div></div>
+  <div class="col-6 col-md-3"><div class="card"><div class="card-body">
+    <div class="text-muted small">Domains</div>
+    <div class="stat-num">{{.Data.Cfg.Domains}}</div>
+  </div></div></div>
+  <div class="col-6 col-md-3"><div class="card"><div class="card-body">
+    <div class="text-muted small">Auto groups</div>
+    <div class="stat-num">{{.Data.Cfg.AutoSites}}</div>
+  </div></div></div>
+</div>
+
+<div class="card"><div class="card-header fw-semibold">Recent changes</div><div class="card-body p-0">
+  <table class="table table-sm table-striped mb-0">
+    <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Detail</th></tr></thead>
+    <tbody>
+    {{range .Data.Changes}}
+      <tr><td class="mono">{{.TS}}</td><td>{{.User}}</td><td class="mono">{{.Action}}</td><td class="mono">{{.Detail}}</td></tr>
+    {{else}}<tr><td colspan="4" class="text-muted text-center">No changes</td></tr>{{end}}
+    </tbody>
+  </table>
+</div></div>
+{{template "footer.html" .}}{{end}}

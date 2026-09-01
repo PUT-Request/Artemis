@@ -1,0 +1,28 @@
+{{define "special.html"}}{{template "header.html" .}}
+<h4 class="mb-3">Live decoding</h4>
+
+<div class="card mb-4"><div class="card-body">
+  <form method="post" action="/special">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <div class="form-check form-switch fs-5 mb-3">
+      <input class="form-check-input" type="checkbox" name="phone_enabled" id="phone_enabled" {{if .Data.PhoneEnabled}}checked{{end}}>
+      <label class="form-check-label" for="phone_enabled">Phone-number IP queries</label>
+    </div>
+    <p class="text-muted small ms-4">
+      A query shaped like a phone number containing an IP &mdash; for example
+      <span class="mono">+1-192-168-199-1</span> or <span class="mono">192-168-199-1</span> &mdash;
+      resolves to the embedded address (<span class="mono">192.168.199.1</span>).
+    </p>
+    <div class="form-check form-switch fs-5 mb-3">
+      <input class="form-check-input" type="checkbox" name="short_enabled" id="short_enabled" {{if .Data.ShortEnabled}}checked{{end}}>
+      <label class="form-check-label" for="short_enabled"><span class="mono">.{{.Data.ShortTLD}}</span> base32 short codes</label>
+    </div>
+    <p class="text-muted small ms-4">
+      <span class="mono">&lt;base32-of-url&gt;.{{.Data.ShortTLD}}</span> decodes live and 302s to the target.
+      Example: <span class="mono">nb2hi4dthixs6ztnnb4s43tfoqxt64j5obzgs5tbmn4q.{{.Data.ShortTLD}}</span>
+      &rarr; <span class="mono">https://fmhy.net/?q=privacy</span>.
+    </p>
+    <button class="btn btn-primary" type="submit"><i class="bi bi-check-lg"></i> Save</button>
+  </form>
+</div></div>
+{{template "footer.html" .}}{{end}}

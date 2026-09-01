@@ -1,0 +1,75 @@
+{{define "auto.html"}}{{template "header.html" .}}
+<h4 class="mb-3">Auto domains (.auto)</h4>
+<p class="text-muted">
+  Visiting <span class="mono">&#60;name&#62;.auto</span> redirects to the first working mirror of
+  that group (in the order listed). Click a domain to manage its mirrors.
+</p>
+
+{{range $gi, $group := .Data.AutoSites}}
+<div class="card mb-3">
+  <div class="card-header d-flex align-items-center">
+    <button class="btn btn-link text-decoration-none p-0 me-2" data-bs-toggle="collapse"
+            data-bs-target="#auto-group-{{$gi}}" aria-expanded="false" aria-controls="auto-group-{{$gi}}">
+      <i class="bi bi-chevron-down"></i>
+    </button>
+    <span class="mono fw-semibold">{{$group.Name}}.auto</span>
+    {{if $group.Enabled}}<span class="badge text-bg-success ms-2">enabled</span>{{else}}<span class="badge text-bg-secondary ms-2">disabled</span>{{end}}
+    <span class="ms-2 text-muted small">{{len $group.Sites}} mirror(s)</span>
+    <form method="post" action="/auto" class="d-inline ms-auto">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <input type="hidden" name="action" value="delete">
+      <input type="hidden" name="name" value="{{$group.Name}}">
+      <button class="btn btn-sm btn-outline-danger" type="submit" title="Delete group"><i class="bi bi-trash"></i></button>
+    </form>
+  </div>
+  <div id="auto-group-{{$gi}}" class="collapse">
+    <div class="card-body">
+      <table class="table table-sm mb-3">
+        <thead class=""><tr><th style="width:2rem">#</th><th>Mirror</th><th></th></tr></thead>
+        <tbody>
+        {{range $i, $s := $group.Sites}}
+          <tr>
+            <td>{{add $i 1}}</td>
+            <td class="mono"><a href="{{$s}}" target="_blank" rel="noopener">{{$s}}</a></td>
+            <td class="text-end">
+              <form method="post" action="/auto" class="d-inline">
+                <input type="hidden" name="csrf" value="{{$.CSRF}}">
+                <input type="hidden" name="action" value="remove-mirror">
+                <input type="hidden" name="name" value="{{$group.Name}}">
+                <input type="hidden" name="site" value="{{$s}}">
+                <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-x-lg"></i></button>
+              </form>
+            </td>
+          </tr>
+        {{else}}<tr><td colspan="3" class="text-muted text-center">No mirrors yet</td></tr>{{end}}
+        </tbody>
+      </table>
+      <form method="post" action="/auto" class="row g-2">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}">
+        <input type="hidden" name="action" value="add-mirror">
+        <input type="hidden" name="name" value="{{$group.Name}}">
+        <div class="col-md-6"><input class="form-control" name="site" placeholder="https://annas-archive.pk" required></div>
+        <div class="col-auto"><button class="btn btn-sm btn-primary" type="submit"><i class="bi bi-plus-lg"></i> Add mirror</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+{{else}}
+<div class="alert alert-info">No auto domains yet — add one below.</div>
+{{end}}
+
+<div class="card"><div class="card-body">
+  <h6 class="mb-3">New auto domain</h6>
+  <form method="post" action="/auto" class="row g-2">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="action" value="add">
+    <div class="col-md-4">
+      <input class="form-control" name="name" placeholder="name (e.g. annas-archive)" required>
+    </div>
+    <div class="col-md-6">
+      <input class="form-control" name="site" placeholder="first mirror (e.g. https://annas-archive.pk)" required>
+    </div>
+    <div class="col-auto"><button class="btn btn-primary" type="submit"><i class="bi bi-plus-lg"></i> Add</button></div>
+  </form>
+</div></div>
+{{template "footer.html" .}}{{end}}

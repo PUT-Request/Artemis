@@ -1,0 +1,52 @@
+server:
+  # Address the DNS server binds. Keep this loopback unless you must expose it;
+  # an open recursive resolver on 0.0.0.0 is a DNS-amplification amplifier.
+  listen: "127.0.0.1:53"
+  # Timeout for each upstream exchange.
+  timeout: "5s"
+  # Optional CIDR allow-list for DNS clients (empty = allow all). If you bind
+  # off-loopback, restrict this to your LAN, e.g. ["127.0.0.1/8","192.168.1.0/24"].
+  acl: []
+  # Max DNS queries per second per client IP (0 disables the limit).
+  rate_limit: 1000
+
+webui:
+  # Management web UI. Plain HTTP — bind to 127.0.0.1 unless you need LAN access.
+  # Change the default password before exposing it off-loopback.
+  enabled: true
+  listen: "127.0.0.1:8082"
+  username: "admin"
+  password: "changeme"
+
+doh:
+  # DNS-over-HTTPS over plain HTTP (no TLS). Non-standard without a cert, but
+  # handy for LAN/local use. GET /path?dns=... or POST a raw DNS message.
+  enabled: true
+  listen: "127.0.0.1:8053"
+  path: "/dns-query"
+
+http:
+  # One HTTP front serves BOTH:
+  #   - URL redirects:   <label>.<domain> -> 302 to <target>?query_param=<label>
+  #                       e.g. privacy.fmhy -> https://fmhy.net/?q=privacy
+  #   - ".auto" mirrors: <site>.auto -> 302 to the first working mirror
+  #                       e.g. annas-archive.auto -> a live annas-archive mirror
+  # All such names resolve to answer_ip. If you run nginx/caddy in front (TLS or
+  # a real domain), set listen to an internal loopback port and proxy to it with
+  # `proxy_set_header Host $host`.
+  enabled: true
+  listen: "127.0.0.1:80"
+  answer_ip: "127.0.0.1"
+  # ".auto" mirror health-check timeout and how long a healthy pick is cached.
+  check_timeout: "3s"
+  cache_ttl: "60s"
+  # Reserved suffix for live base32 decoding: <base32-of-url>.ba -> 302 to the
+  # decoded URL (toggled in the WebUI). Empty disables.
+  short_tld: "ba"
+
+database:
+  # SQLite file. Now the source of truth for upstreams, redirects, custom
+  # domains and the special toggle, plus the request + change logs.
+  path: "artemis.db"
+  # Number of days to keep request logs before pruning (0 disables pruning).
+  retention_days: 30

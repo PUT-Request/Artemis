@@ -1,0 +1,13 @@
+{{define "changes.html"}}{{template "header.html" .}}
+<h4 class="mb-3">Configuration change history</h4>
+<div class="card"><div class="card-body p-0">
+  <table class="table table-sm table-striped mb-0">
+    <thead class=""><tr><th>Time</th><th>User</th><th>Action</th><th>Detail</th></tr></thead>
+    <tbody>
+    {{range .Data.Changes}}
+      <tr><td class="mono">{{.TS}}</td><td>{{.User}}</td><td class="mono">{{.Action}}</td><td class="mono">{{.Detail}}</td></tr>
+    {{else}}<tr><td colspan="4" class="text-muted text-center">No changes recorded</td></tr>{{end}}
+    </tbody>
+  </table>
+</div></div>
+{{template "footer.html" .}}{{end}}
