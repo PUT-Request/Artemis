@@ -30,13 +30,16 @@ func (f *httpFront) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	host := normalizeHost(r.Host)
 
 	// Per-IP rate limit + ACL (shared with the DNS side). The front is now an
-	// open redirector for .32 short codes, so it needs a throttle.
+	// open redirector for .ba short codes, so it needs a throttle.
 	ip := httpClientIP(r)
 	if !f.handler.allowed(ip) {
 		http.Error(w, "too many requests", http.StatusTooManyRequests)
 		return
 	}
 
+	// Redirect domains take priority: check before short-TLD so that
+	// e.g. novel.fy hits a redirect (not found → 404) rather than being
+	// fed to the base32 short-code decoder which would decode it as garbage.
 	if rc := f.handler.rt.redirectFor(host); rc != nil {
 		label := redirectLabel(host, rc.Domain)
 		location := redirectTarget(rc, label)
@@ -48,7 +51,7 @@ func (f *httpFront) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tld := f.handler.cfg.HTTP.ShortTLD
-	if tld != "" && f.handler.rt.ShortEnabled() && isShortName(host, tld) {
+	if tld != "" && f.handler.rt.ShortEnabled() && isShortName(host, tld) && !f.handler.rt.isRedirectTLD(host) {
 		if target, err := shortDecode(host, tld); err == nil {
 			if f.handler.store != nil {
 				f.handler.store.LogIP(ip)
@@ -100,6 +103,13 @@ func shortDecode(host, tld string) (string, error) {
 		return "", fmt.Errorf("base32 decode: %w", err)
 	}
 	target := string(raw)
+	// Reject decoded content with non-printable/non-ASCII characters (garbage
+	// from base32-decoding ordinary words like "novel").
+	for _, r := range target {
+		if r < 0x20 || r > 0x7E {
+			return "", fmt.Errorf("decoded content contains non-printable character")
+		}
+	}
 	if !strings.Contains(target, "://") {
 		target = "https://" + target
 	}

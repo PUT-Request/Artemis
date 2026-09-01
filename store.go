@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -378,7 +379,7 @@ func (s *Store) SetSetting(user, key, value string) error {
 // ---------------- redirects ---------------
 
 func (s *Store) listRedirects() ([]RedirectConfig, error) {
-	rows, err := s.db.Query(`SELECT domain, target, query_param FROM redirects ORDER BY domain`)
+	rows, err := s.db.Query(`SELECT domain, target, query_param FROM redirects`)
 	if err != nil {
 		return nil, err
 	}
@@ -391,6 +392,11 @@ func (s *Store) listRedirects() ([]RedirectConfig, error) {
 		}
 		out = append(out, rc)
 	}
+	// Most specific (longest) domains first so exact-match rows like
+	// "ai.tools.fy" win over parent "tools.fy" or "fy" in redirectFor().
+	sort.Slice(out, func(i, j int) bool {
+		return len(out[i].Domain) > len(out[j].Domain)
+	})
 	return out, rows.Err()
 }
 
@@ -403,6 +409,21 @@ func (s *Store) AddRedirect(user string, rc RedirectConfig) error {
 	}
 	if b, jerr := json.Marshal(rc); jerr == nil {
 		s.RecordChange(user, "redirect-add", string(b))
+	}
+	return nil
+}
+
+// UpsertRedirect inserts or replaces a redirect row by its unique domain.
+func (s *Store) UpsertRedirect(user string, rc RedirectConfig) error {
+	if _, err := s.db.Exec(
+		`INSERT INTO redirects (domain, target, query_param, updated_at) VALUES (?, ?, ?, datetime('now'))
+		 ON CONFLICT(domain) DO UPDATE SET target=excluded.target, query_param=excluded.query_param, updated_at=datetime('now')`,
+		rc.Domain, rc.Target, rc.QueryParam,
+	); err != nil {
+		return err
+	}
+	if b, jerr := json.Marshal(rc); jerr == nil {
+		s.RecordChange(user, "redirect-upsert", string(b))
 	}
 	return nil
 }

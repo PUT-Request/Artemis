@@ -34,6 +34,33 @@
 </div></div>
 
 <div class="card"><div class="card-body">
+  <h6 class="mb-3">Import from sitemap</h6>
+  <form method="post" action="/redirects" class="row g-2 align-items-end">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="action" value="import-sitemap">
+    <div class="col-md-7">
+      <label class="form-label mb-0 small">Sitemap base URL (appends <code>/sitemap.xml</code>)</label>
+      <input class="form-control" name="sitemap_url" placeholder="https://fmhy.net" required>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label mb-0 small">Short TLD</label>
+      <input class="form-control" name="sitemap_tld" placeholder="e.g. fy" required>
+    </div>
+    <div class="col-auto d-grid">
+      <button class="btn btn-success" type="submit"><i class="bi bi-download"></i> Import</button>
+    </div>
+  </form>
+  <div class="form-text mt-2">
+    Imports <code>&lt;label&gt;.&lt;tld&gt;</code> per URL, mapping path segments
+    to subdomains (deepest = leftmost), e.g. <code>/tools/ai-checker</code> &rarr;
+    <code>ai-checker.tools.{{.Data.ShortTLD}}</code> &rarr;
+    <code>https://fmhy.net/tools/ai-checker</code>. Each domain resolves to
+    <span class="mono">{{.Data.AnswerIP}}</span> and HTTP returns a 302 to the
+    full URL. Re-importing updates existing entries in place.
+  </div>
+</div></div>
+
+<div class="card"><div class="card-body">
   <h6 class="mb-3">Add redirect</h6>
   <form method="post" action="/redirects" class="row g-2">
     <input type="hidden" name="csrf" value="{{.CSRF}}">

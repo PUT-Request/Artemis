@@ -100,6 +100,30 @@ func (rt *runtime) redirectFor(name string) *RedirectConfig {
 	return nil
 }
 
+// isRedirectTLD reports whether the TLD portion of name matches a registered
+// redirect domain. E.g. if "fy" is a redirect domain, then "novel.fy" has
+// redirect TLD "fy". This prevents the short-TLD base32 decoder from
+// intercepting names that belong to the redirect domain space.
+// isRedirectTLD reports whether the TLD portion of name belongs to a registered
+// redirect domain space. E.g. if "ai.fy" is a redirect, then "novel.fy" has
+// redirect TLD "fy" and should NOT be fed to the base32 short-code decoder.
+func (rt *runtime) isRedirectTLD(name string) bool {
+	norm := strings.ToLower(strings.TrimSuffix(name, "."))
+	parts := strings.SplitN(norm, ".", 2)
+	if len(parts) < 2 {
+		return false
+	}
+	tld := parts[1] // e.g. "fy" from "novel.fy", "tools.fy" from "novel.tools.fy"
+	rt.mu.RLock()
+	defer rt.mu.RUnlock()
+	for _, rc := range rt.live.Redirects {
+		if tld == rc.Domain {
+			return true
+		}
+	}
+	return false
+}
+
 func (rt *runtime) Redirects() []RedirectConfig {
 	rt.mu.RLock()
 	defer rt.mu.RUnlock()

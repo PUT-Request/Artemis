@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"encoding/hex"
+	"encoding/xml"
 	"fmt"
 	"html/template"
 	"log"
@@ -206,11 +207,16 @@ func (w *webServer) render(rw http.ResponseWriter, r *http.Request, name string,
 // consumeCSRF validates the posted token and rotates it on success so a
 // captured token can't be replayed.
 func (w *webServer) consumeCSRF(r *http.Request) bool {
-	if subtle.ConstantTimeCompare([]byte(r.FormValue("csrf")), []byte(w.csrf())) != 1 {
-		return false
+	if err := r.ParseForm(); err != nil {
+		log.Printf("consumeCSRF: parse form: %v", err)
 	}
-	w.refreshCSRF()
-	return true
+	got := r.FormValue("csrf")
+	want := w.csrf()
+	ok := subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
+	if ok {
+		w.refreshCSRF()
+	}
+	return ok
 }
 
 // redirectErr redirects back, appending an error message when present.
@@ -321,6 +327,10 @@ func (w *webServer) handleRedirects(rw http.ResponseWriter, r *http.Request) {
 			return
 		}
 		action := r.FormValue("action")
+		if action == "import-sitemap" {
+			w.handleSitemapImport(rw, r)
+			return
+		}
 		oldDomain := tidyDomain(r.FormValue("old_domain"))
 		rc := parseRedirectForm(r)
 		user := w.app.cfg.WebUI.Username
@@ -358,7 +368,98 @@ func (w *webServer) handleRedirects(rw http.ResponseWriter, r *http.Request) {
 		"Redirects": redirects,
 		"Listen":    w.app.cfg.HTTP.Listen,
 		"AnswerIP":  w.app.cfg.HTTP.AnswerIP,
+		"ShortTLD":  w.app.cfg.HTTP.ShortTLD,
 	})
+}
+
+// handleSitemapImport fetches a sitemap XML for a base URL and upserts one
+// redirect per <loc>, mapping each URL to a short <label>.<tld> domain via
+// path segments (deepest segment = leftmost label, e.g. /tools/ai -> ai.tools).
+func (w *webServer) handleSitemapImport(rw http.ResponseWriter, r *http.Request) {
+	base := strings.TrimSpace(r.FormValue("sitemap_url"))
+	tld := strings.TrimSpace(r.FormValue("sitemap_tld"))
+	if base == "" || tld == "" {
+		w.redirectErr(rw, r, "/redirects", fmt.Errorf("sitemap URL and TLD are required"))
+		return
+	}
+	sitemapURL := strings.TrimRight(base, "/") + "/sitemap.xml"
+	resp, err := http.Get(sitemapURL)
+	if err != nil {
+		w.redirectErr(rw, r, "/redirects", fmt.Errorf("fetch sitemap: %v", err))
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		w.redirectErr(rw, r, "/redirects", fmt.Errorf("fetch sitemap: HTTP %d", resp.StatusCode))
+		return
+	}
+	var ss struct {
+		URLs []struct {
+			Loc string `xml:"loc"`
+		} `xml:"url"`
+	}
+	if err := xml.NewDecoder(resp.Body).Decode(&ss); err != nil {
+		w.redirectErr(rw, r, "/redirects", fmt.Errorf("parse sitemap: %v", err))
+		return
+	}
+
+	inserted := 0
+	user := w.app.cfg.WebUI.Username
+	for _, u := range ss.URLs {
+		loc := strings.TrimSpace(u.Loc)
+		if loc == "" {
+			continue
+		}
+		if err := validateRedirectURL(loc); err != nil {
+			continue
+		}
+		p, err := url.Parse(loc)
+		if err != nil || p.Path == "" {
+			continue
+		}
+		label := deriveLabel(p.Path)
+		if label == "" {
+			continue
+		}
+		domain := label + "." + tld
+		rc := RedirectConfig{Domain: domain, Target: loc, QueryParam: ""}
+		if err := w.app.store.UpsertRedirect(user, rc); err == nil {
+			inserted++
+		}
+	}
+	if err := w.applyDynamic(); err != nil {
+		log.Printf("sitemap import applied-dynamic warning: %v", err)
+	}
+	w.redirectErr(rw, r, "/redirects", fmt.Errorf("%d redirects imported for .%s", inserted, tld))
+}
+
+// deriveLabel turns a URL path into a short subdomain, reversing the path
+// segments so the deepest segment becomes the leftmost label.
+// e.g. /tools/ai-checker -> "ai-checker.tools"
+func deriveLabel(path string) string {
+	segs := strings.FieldsFunc(strings.Trim(path, "/"), func(r rune) bool { return r == '/' })
+	for i, j := 0, len(segs)-1; i < j; i, j = i+1, j-1 {
+		segs[i], segs[j] = segs[j], segs[i]
+	}
+	cleaned := make([]string, 0, len(segs))
+	for _, s := range segs {
+		s = strings.ToLower(s)
+		var b strings.Builder
+		for _, r := range s {
+			if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+				b.WriteRune(r)
+			}
+		}
+		term := b.String()
+		if term == "" || term == "-" || len(term) > 63 {
+			continue
+		}
+		cleaned = append(cleaned, term)
+	}
+	if len(cleaned) == 0 {
+		return ""
+	}
+	return strings.Join(cleaned, ".")
 }
 
 // requireRedirect validates the fields a redirect needs before persisting.

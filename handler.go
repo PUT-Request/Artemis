@@ -82,7 +82,7 @@ func (h *handler) resolveMsg(r *dns.Msg, clientIP string) *dns.Msg {
 		resp = h.specialAnswer(r, q, p.ip)
 	} else if rc := h.rt.redirectFor(q.Name); h.cfg.HTTP.Enabled && rc != nil {
 		resp = h.redirectAnswer(r, q)
-	} else if h.cfg.HTTP.Enabled && isShortName(q.Name, h.cfg.HTTP.ShortTLD) && h.rt.ShortEnabled() {
+	} else if h.cfg.HTTP.Enabled && isShortName(q.Name, h.cfg.HTTP.ShortTLD) && h.rt.ShortEnabled() && !h.rt.isRedirectTLD(q.Name) {
 		resp = h.autoAnswer(r, q)
 	} else if h.cfg.HTTP.Enabled && isAutoName(q.Name) {
 		resp = h.autoAnswer(r, q)

@@ -4,6 +4,7 @@ import (
 	"encoding/base32"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -268,5 +269,77 @@ func TestServerHTTPHeaders(t *testing.T) {
 	}
 	if !strings.Contains(rec.Header().Get("Content-Security-Policy"), "frame-ancestors 'none'") {
 		t.Fatal("CSP missing frame-ancestors")
+	}
+}
+
+func TestDeriveLabel(t *testing.T) {
+	cases := []struct{ path, want string }{
+		{"/privacy", "privacy"},
+		{"/tools/ai-checker", "ai-checker.tools"},
+		{"/a/b/c", "c.b.a"},
+		{"/", ""},
+		{"/tools/AI-Checker", "ai-checker.tools"}, // lowercased
+		{"/tools/ai checker", "aichecker.tools"},  // space dropped from segment
+	}
+	for _, c := range cases {
+		if got := deriveLabel(c.path); got != c.want {
+			t.Errorf("deriveLabel(%q) = %q, want %q", c.path, got, c.want)
+		}
+	}
+}
+
+func TestUpsertRedirectRoundtrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "upsert.db")
+	st, err := openStore(path)
+	if err != nil {
+		t.Fatalf("openStore: %v", err)
+	}
+	defer st.Close()
+	rc := RedirectConfig{Domain: "privacy.fy", Target: "https://fmhy.net/privacy"}
+	if err := st.UpsertRedirect("eli32", rc); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	// upsert again -> updates target in place, stays one row
+	rc.Target = "https://fmhy.net/privacy-tools"
+	if err := st.UpsertRedirect("eli32", rc); err != nil {
+		t.Fatalf("upsert2: %v", err)
+	}
+	reds, err := st.listRedirects()
+	if err != nil {
+		t.Fatalf("listRedirects: %v", err)
+	}
+	n := 0
+	for _, r := range reds {
+		if r.Domain == "privacy.fy" {
+			n++
+			if r.Target != "https://fmhy.net/privacy-tools" {
+				t.Fatalf("target = %q", r.Target)
+			}
+		}
+	}
+	if n != 1 {
+		t.Fatalf("expected exactly 1 privacy.fy row, got %d", n)
+	}
+}
+
+func TestRedirectsSortedBySpecificity(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sort.db")
+	st, err := openStore(path)
+	if err != nil {
+		t.Fatalf("openStore: %v", err)
+	}
+	defer st.Close()
+	for _, d := range []string{"ai.tools.fy", "tools.fy", "fy"} {
+		if err := st.UpsertRedirect("eli32", RedirectConfig{Domain: d, Target: "https://example.com"}); err != nil {
+			t.Fatalf("upsert %s: %v", d, err)
+		}
+	}
+	reds, err := st.listRedirects()
+	if err != nil {
+		t.Fatalf("listRedirects: %v", err)
+	}
+	// most specific first
+	if len(reds) != 3 || reds[0].Domain != "ai.tools.fy" || reds[2].Domain != "fy" {
+		t.Fatalf("not sorted by specificity: %+v", reds)
 	}
 }
