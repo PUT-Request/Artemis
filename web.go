@@ -364,11 +364,20 @@ func (w *webServer) handleRedirects(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirects := w.app.rt.Redirects()
+	var imported, manual []RedirectConfig
+	for _, rc := range redirects {
+		if rc.QueryParam == "" {
+			imported = append(imported, rc)
+		} else {
+			manual = append(manual, rc)
+		}
+	}
 	w.render(rw, r, "redirects", map[string]any{
-		"Redirects": redirects,
-		"Listen":    w.app.cfg.HTTP.Listen,
-		"AnswerIP":  w.app.cfg.HTTP.AnswerIP,
-		"ShortTLD":  w.app.cfg.HTTP.ShortTLD,
+		"Imported": imported,
+		"Manual":   manual,
+		"Listen":   w.app.cfg.HTTP.Listen,
+		"AnswerIP": w.app.cfg.HTTP.AnswerIP,
+		"ShortTLD": w.app.cfg.HTTP.ShortTLD,
 	})
 }
 
