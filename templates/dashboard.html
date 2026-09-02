@@ -24,6 +24,27 @@
   </div></div></div>
 </div>
 
+{{if gt .Data.CacheTTL 0.0}}
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3"><div class="card"><div class="card-body">
+    <div class="text-muted small">Cache entries</div>
+    <div class="stat-num">{{.Data.CacheSize}}</div>
+  </div></div></div>
+  <div class="col-6 col-md-3"><div class="card"><div class="card-body">
+    <div class="text-muted small">Cache hits</div>
+    <div class="stat-num">{{.Data.CacheHits}}</div>
+  </div></div></div>
+  <div class="col-6 col-md-3"><div class="card"><div class="card-body">
+    <div class="text-muted small">Cache misses</div>
+    <div class="stat-num">{{.Data.CacheMiss}}</div>
+  </div></div></div>
+  <div class="col-6 col-md-3"><div class="card"><div class="card-body">
+    <div class="text-muted small">Cache evictions</div>
+    <div class="stat-num">{{.Data.CacheEvict}}</div>
+  </div></div></div>
+</div>
+{{end}}
+
 <div class="card"><div class="card-header fw-semibold">Recent changes</div><div class="card-body p-0">
   <table class="table table-sm table-striped mb-0">
     <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Detail</th></tr></thead>

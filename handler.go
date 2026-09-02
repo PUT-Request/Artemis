@@ -18,6 +18,7 @@ type handler struct {
 	tcp   *dns.Client
 	acl   []*net.IPNet
 	rl    *rateLimiter
+	cache *dnsCache
 }
 
 func newHandler(cfg *Config, rt *runtime, store *Store) *handler {
@@ -29,6 +30,9 @@ func newHandler(cfg *Config, rt *runtime, store *Store) *handler {
 		udp:   &dns.Client{Net: "udp", Timeout: timeout},
 		tcp:   &dns.Client{Net: "tcp", Timeout: timeout},
 		rl:    newRateLimiter(cfg.Server.RateLimit),
+	}
+	if cfg.Server.DNSCacheTTL.Std() > 0 {
+		h.cache = newDNSCache(cfg.Server.DNSCacheTTL.Std())
 	}
 	for _, cidr := range cfg.Server.ACL {
 		if _, n, err := net.ParseCIDR(cidr); err == nil {
@@ -186,24 +190,46 @@ func aRecord(name string, ip net.IP) *dns.A {
 }
 
 // forward relays the query to the first upstream that answers, retrying over
-// TCP if the UDP response is truncated.
+// TCP if the UDP response is truncated. Responses are cached when a cache is
+// configured.
 func (h *handler) forward(q dns.Question, r *dns.Msg) *dns.Msg {
+	// Check cache first.
+	if h.cache != nil {
+		if cached := h.cache.get(q.Name, q.Qtype); cached != nil {
+			cached.Id = r.Id // match the caller's transaction ID
+			return cached
+		}
+	}
+
+	var resp *dns.Msg
 	for _, up := range h.rt.Upstreams() {
 		resp, _, err := h.udp.Exchange(r, up)
 		if err == nil && !resp.Truncated {
-			return resp
+			break
 		}
 		if err == nil && resp.Truncated {
 			if tcpResp, _, terr := h.tcp.Exchange(r, up); terr == nil {
-				return tcpResp
+				resp = tcpResp
+				break
 			}
-			return resp
+			// TCP also failed — return the truncated UDP response.
+			break
 		}
 		log.Printf("upstream %s failed: %v", up, err)
+		resp = nil
 	}
-	m := new(dns.Msg)
-	m.SetRcode(r, dns.RcodeServerFailure)
-	return m
+
+	if resp == nil {
+		m := new(dns.Msg)
+		m.SetRcode(r, dns.RcodeServerFailure)
+		return m
+	}
+
+	// Store in cache.
+	if h.cache != nil {
+		h.cache.put(q.Name, q.Qtype, resp)
+	}
+	return resp
 }
 
 // redirectLabel extracts the query parameter label from a redirect query,

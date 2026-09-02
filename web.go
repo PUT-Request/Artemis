@@ -238,13 +238,23 @@ func (w *webServer) pageDashboard(rw http.ResponseWriter, r *http.Request) {
 		"AutoSites": len(w.app.rt.AutoSites()),
 	}
 	changes := w.app.store.recentChanges(8)
+
+	var cacheHits, cacheMisses, cacheEvicts, cacheSize uint64
+	if w.app.handler.cache != nil {
+		cacheHits, cacheMisses, cacheEvicts, cacheSize = w.app.handler.cache.stats()
+	}
 	w.render(rw, r, "dashboard", map[string]any{
-		"Cfg":     cfg,
-		"Changes": changes,
-		"DNS":     w.app.cfg.Server.Listen,
-		"DoH":     w.app.cfg.DoH.Listen,
-		"HTTP":    w.app.cfg.HTTP.Listen,
-		"WebUI":   w.app.cfg.WebUI.Listen,
+		"Cfg":        cfg,
+		"Changes":    changes,
+		"DNS":        w.app.cfg.Server.Listen,
+		"DoH":        w.app.cfg.DoH.Listen,
+		"HTTP":       w.app.cfg.HTTP.Listen,
+		"WebUI":      w.app.cfg.WebUI.Listen,
+		"CacheHits":  cacheHits,
+		"CacheMiss":  cacheMisses,
+		"CacheEvict": cacheEvicts,
+		"CacheSize":  cacheSize,
+		"CacheTTL":   w.app.cfg.Server.DNSCacheTTL.Std().Seconds(),
 	})
 }
 

@@ -9,6 +9,8 @@ server:
   acl: []
   # Max DNS queries per second per client IP (0 disables the limit).
   rate_limit: 1000
+  # How long to cache DNS responses from upstreams (0 disables caching).
+  dns_cache_ttl: "60s"
 
 webui:
   # Management web UI. Plain HTTP — bind to 127.0.0.1 unless you need LAN access.

@@ -39,10 +39,11 @@ type HTTPConfig struct {
 }
 
 type ServerConfig struct {
-	Listen    string   `yaml:"listen"`
-	Timeout   Duration `yaml:"timeout"`
-	ACL       []string `yaml:"acl"`
-	RateLimit int      `yaml:"rate_limit"`
+	Listen     string   `yaml:"listen"`
+	Timeout    Duration `yaml:"timeout"`
+	ACL        []string `yaml:"acl"`
+	RateLimit  int      `yaml:"rate_limit"`
+	DNSCacheTTL Duration `yaml:"dns_cache_ttl"`
 }
 
 type WebUIConfig struct {
@@ -92,6 +93,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Server.RateLimit == 0 {
 		c.Server.RateLimit = 1000
+	}
+	if c.Server.DNSCacheTTL == 0 {
+		c.Server.DNSCacheTTL = Duration(60 * time.Second)
 	}
 	if c.Database.Path == "" {
 		c.Database.Path = "artemis.db"
