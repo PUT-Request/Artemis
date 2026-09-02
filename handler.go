@@ -33,7 +33,9 @@ func newHandler(cfg *Config, rt *runtime, store *Store) *handler {
 	}
 	if cfg.Server.DNSCacheTTL.Std() > 0 {
 		h.cache = newDNSCache(cfg.Server.DNSCacheTTL.Std())
+		log.Printf("DNS cache enabled (TTL %s)", cfg.Server.DNSCacheTTL.Std())
 	}
+	log.Printf("handler: %d upstream(s) loaded", len(rt.Upstreams()))
 	for _, cidr := range cfg.Server.ACL {
 		if _, n, err := net.ParseCIDR(cidr); err == nil {
 			h.acl = append(h.acl, n)
@@ -201,25 +203,39 @@ func (h *handler) forward(q dns.Question, r *dns.Msg) *dns.Msg {
 		}
 	}
 
+	ups := h.rt.Upstreams()
+	if len(ups) == 0 {
+		log.Printf("forward: no upstreams configured for %s", q.Name)
+		m := new(dns.Msg)
+		m.SetRcode(r, dns.RcodeServerFailure)
+		return m
+	}
+
 	var resp *dns.Msg
-	for _, up := range h.rt.Upstreams() {
-		resp, _, err := h.udp.Exchange(r, up)
-		if err == nil && !resp.Truncated {
-			break
+	for _, up := range ups {
+		udpResp, _, err := h.udp.Exchange(r, up)
+		if err != nil {
+			log.Printf("upstream %s failed: %v", up, err)
+			continue
 		}
-		if err == nil && resp.Truncated {
-			if tcpResp, _, terr := h.tcp.Exchange(r, up); terr == nil {
+		if udpResp == nil {
+			log.Printf("upstream %s returned nil response", up)
+			continue
+		}
+		if udpResp.Truncated {
+			if tcpResp, _, terr := h.tcp.Exchange(r, up); terr == nil && tcpResp != nil {
 				resp = tcpResp
-				break
+			} else {
+				resp = udpResp
 			}
-			// TCP also failed — return the truncated UDP response.
 			break
 		}
-		log.Printf("upstream %s failed: %v", up, err)
-		resp = nil
+		resp = udpResp
+		break
 	}
 
 	if resp == nil {
+		log.Printf("forward: all upstreams failed for %s", q.Name)
 		m := new(dns.Msg)
 		m.SetRcode(r, dns.RcodeServerFailure)
 		return m
