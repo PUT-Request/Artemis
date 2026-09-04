@@ -79,10 +79,7 @@ go test ./...
 
 ## Artemis DNS
 
-Artemis DNS site 
-```bash
-https://dns.fuzzing.uk
-```
+Artemis DNS site: [dns.fuzzing.uk](https://dns.fuzzing.uk)
 
 ## Security Notes
 
