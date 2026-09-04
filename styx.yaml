@@ -74,7 +74,7 @@ mode: read_write
 
 api_endpoint: ${STYX_API_ENDPOINT}
 api_key: ${STYX_API_KEY}
-model: ling-3.0-flash-fin-free
+model: nemotron-3.5-lightning-free
 max_context: 2560000
 
 verification_regex: "AUDIT COMPLETE:.+bugs?.+found"
