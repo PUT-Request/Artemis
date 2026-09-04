@@ -1,0 +1,119 @@
+# ===========================================
+# Artemis — Comprehensive .gitignore
+# ===========================================
+
+# ----- Project-specific -----
+Artemis
+artemis
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# ----- Go -----
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage.html
+go.work
+go.work.sum
+vendor/
+
+# ----- OS generated -----
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# ----- Editor / IDE -----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+*.code-workspace
+.history/
+*.komodoproject
+.komodotools/
+
+# ----- AI / CLI agent dotfiles -----
+.crush/
+.opencode/
+.cursor/
+.cursorignore
+.aider*
+.claude/
+.claude.md
+.windsurf/
+.codeium/
+.copilot/
+copilot-instructions.md
+.agents/
+.vibe/
+.fly/
+
+# ----- Environment / secrets -----
+.env
+.env.*
+.env.local
+.env.development
+.env.production
+.env.staging
+*.pem
+*.key
+*.crt
+*.cert
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+id_dsa*
+id_ecdsa*
+known_hosts
+*.secret
+.secrets
+
+# ----- Backup / temp -----
+*.bak
+*.backup
+*.tmp
+*.temp
+*.orig
+*.rej
+*~
+\#*\#
+.#*
+
+# ----- Node (if ever added) -----
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+.pnpm-debug.log*
+
+# ----- Logs -----
+*.log
+logs/
+log/
+
+# ----- Misc -----
+*.pid
+*.seed
+*.pid.lock
