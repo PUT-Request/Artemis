@@ -77,6 +77,10 @@ go build -o artemis .
 go test ./...
 ```
 
+## Artemis DNS
+
+Artemis DNS site: [dns.fuzzing.uk](https://dns.fuzzing.uk)
+
 ## Security Notes
 
 - Web UI uses HTTP Basic auth with constant-time password comparison and IP-based brute-force throttling.
