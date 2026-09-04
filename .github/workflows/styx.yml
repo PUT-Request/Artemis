@@ -22,4 +22,4 @@ jobs:
           STYX_API_KEY: ${{ secrets.STYX_API_KEY }}
           STYX_API_ENDPOINT: ${{ secrets.STYX_API_ENDPOINT }}
           STYX_DISCORD_WEBHOOK: ${{ secrets.STYX_DISCORD_WEBHOOK }}
-        run: ./styx-linux-amd64 --config styx.yaml
+        run: ./styx-linux-amd64 --run styx.yaml
