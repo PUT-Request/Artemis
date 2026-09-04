@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"sort"
@@ -20,10 +21,11 @@ const requestLogMax = 100_000 // cap on distinct IP rows
 // simple; log writes funnel through one goroutine so resolution never spawns
 // unbounded DB goroutines.
 type Store struct {
-	db     *sql.DB
-	logCh  chan string
-	stopCh chan struct{}
-	wg     sync.WaitGroup
+	db       *sql.DB
+	logCh    chan string
+	stopCh   chan struct{}
+	wg       sync.WaitGroup
+	closeOnce sync.Once
 }
 
 func openStore(path string) (*Store, error) {
@@ -117,7 +119,11 @@ CREATE TABLE IF NOT EXISTS config_changes (
 				var cid, name, typ string
 				var notnull, pk int
 				var dflt sql.NullString
-				rows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk)
+				if err := rows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
+					rows.Close()
+					db.Close()
+					return nil, fmt.Errorf("scan redirects schema: %w", err)
+				}
 				cols[name] = true
 			}
 			rows.Close()
@@ -264,8 +270,10 @@ func (s *Store) Prune(retentionDays int) {
 }
 
 func (s *Store) Close() error {
-	close(s.stopCh)
-	s.wg.Wait()
+	s.closeOnce.Do(func() {
+		close(s.stopCh)
+		s.wg.Wait()
+	})
 	return s.db.Close()
 }
 

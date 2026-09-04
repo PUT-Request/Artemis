@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -17,15 +18,17 @@ import (
 )
 
 type app struct {
-	cfg         *Config
-	cfgPath     string
-	store       *Store
-	rt          *runtime
-	handler     *handler
-	webUI       *webServer
-	mu          sync.Mutex
-	dnsServers  []*dns.Server
-	httpServers []*http.Server
+	cfg          *Config
+	cfgPath      string
+	store        *Store
+	rt           *runtime
+	handler      *handler
+	webUI        *webServer
+	mu           sync.Mutex
+	dnsServers   []*dns.Server
+	httpServers  []*http.Server
+	shuttingDown atomic.Bool
+	errCh        chan error
 }
 
 func main() {
@@ -51,7 +54,7 @@ func main() {
 		}()
 	}
 
-	a := &app{cfg: cfg, cfgPath: *cfgPath, store: store}
+	a := &app{cfg: cfg, cfgPath: *cfgPath, store: store, errCh: make(chan error, 4)}
 	if lc, err := store.loadLive(); err != nil {
 		log.Fatalf("load live config: %v", err)
 	} else {
@@ -72,6 +75,12 @@ func main() {
 		go a.webUI.Serve()
 		log.Printf("Web UI listening on %s", cfg.WebUI.Listen)
 	}
+	// Surface fatal server errors (e.g. listener died).
+	go func() {
+		if err := <-a.errCh; err != nil {
+			log.Fatalf("listener error: %v", err)
+		}
+	}()
 	if isNonLoopback(cfg.Server.Listen) {
 		log.Printf("WARNING: DNS bound to a non-loopback address — an open resolver unless server.acl is set")
 	}
@@ -84,6 +93,9 @@ func main() {
 		ch := make(chan os.Signal, 1)
 		signal.Notify(ch, syscall.SIGHUP)
 		for range ch {
+			if a.shuttingDown.Load() {
+				return
+			}
 			log.Printf("SIGHUP received, restarting listeners")
 			if err := a.restart(); err != nil {
 				log.Printf("restart failed: %v", err)
@@ -95,8 +107,9 @@ func main() {
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	select {
 	case s := <-sig:
+		a.shuttingDown.Store(true)
 		log.Printf("received %v, shutting down", s)
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		a.stop(ctx)
 	}
@@ -170,6 +183,10 @@ func (a *app) bindUDP(addr string, h dns.Handler) (*dns.Server, error) {
 	go func() {
 		if err := s.ActivateAndServe(); err != nil {
 			log.Printf("dns udp %s: %v", addr, err)
+			select {
+			case a.errCh <- fmt.Errorf("dns udp %s: %w", addr, err):
+			default:
+			}
 		}
 	}()
 	return s, nil
@@ -185,6 +202,10 @@ func (a *app) bindTCP(addr string, h dns.Handler) (*dns.Server, error) {
 	go func() {
 		if err := s.ActivateAndServe(); err != nil {
 			log.Printf("dns tcp %s: %v", addr, err)
+			select {
+			case a.errCh <- fmt.Errorf("dns tcp %s: %w", addr, err):
+			default:
+			}
 		}
 	}()
 	return s, nil
@@ -259,12 +280,22 @@ func (a *app) restart() error {
 	a.dnsServers = nil
 	stopHTTPServers(a.httpServers)
 	a.httpServers = nil
+	if a.webUI != nil {
+		a.webUI.server.Shutdown(ctx)
+		a.webUI = nil
+	}
 
 	dnsS, httpS, err := a.bindAll()
 	if err != nil {
 		return err
 	}
 	a.dnsServers, a.httpServers = dnsS, httpS
+
+	if a.cfg.WebUI.Enabled {
+		a.webUI = newWebServer(a)
+		go a.webUI.Serve()
+		log.Printf("Web UI listening on %s", a.cfg.WebUI.Listen)
+	}
 
 	a.store.RecordChange("system", "restart", "")
 	log.Printf("restart complete")

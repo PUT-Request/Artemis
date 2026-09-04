@@ -28,11 +28,13 @@ type httpFront struct {
 
 func (f *httpFront) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	host := normalizeHost(r.Host)
+	ip := httpClientIP(r)
+	log.Printf("http front: %s %s host=%s remote=%s", r.Method, r.URL.Path, host, ip)
 
 	// Per-IP rate limit + ACL (shared with the DNS side). The front is now an
 	// open redirector for .ba short codes, so it needs a throttle.
-	ip := httpClientIP(r)
 	if !f.handler.allowed(ip) {
+		log.Printf("http front: rate limited %s", ip)
 		http.Error(w, "too many requests", http.StatusTooManyRequests)
 		return
 	}

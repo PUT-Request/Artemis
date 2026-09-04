@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"time"
 
@@ -109,14 +110,20 @@ func (c *Config) applyDefaults() {
 	if c.DoH.Path == "" {
 		c.DoH.Path = "/dns-query"
 	}
+	// Default HTTP.Enabled before Listen: only auto-enable when the http block
+	// was entirely omitted (both Enabled and Listen are zero values). An explicit
+	// "enabled: false" with no listen must not be overridden.
+	if !c.HTTP.Enabled && c.HTTP.Listen == "" {
+		c.HTTP.Enabled = true
+	}
 	if c.HTTP.Listen == "" {
-		c.HTTP.Enabled = true // http block omitted entirely -> on by default
+		c.HTTP.Listen = "127.0.0.1:80"
 	}
 	if c.HTTP.AnswerIP == "" {
 		c.HTTP.AnswerIP = "127.0.0.1"
 	}
-	if c.HTTP.Listen == "" {
-		c.HTTP.Listen = "127.0.0.1:80"
+	if net.ParseIP(c.HTTP.AnswerIP) == nil {
+		c.HTTP.AnswerIP = "127.0.0.1"
 	}
 	if c.HTTP.CheckTimeout == 0 {
 		c.HTTP.CheckTimeout = Duration(3 * time.Second)

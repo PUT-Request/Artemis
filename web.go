@@ -9,6 +9,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -126,7 +127,7 @@ func authOK(got, want string) bool {
 
 func (w *webServer) basicAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+		ip := httpClientIP(r)
 		if !w.limiter.allow(ip) {
 			time.Sleep(time.Duration(400+200*w.limiterFailCount(ip)) * time.Millisecond)
 			rw.Header().Set("WWW-Authenticate", `Basic realm="Artemis"`)
@@ -402,7 +403,8 @@ func (w *webServer) handleSitemapImport(rw http.ResponseWriter, r *http.Request)
 		return
 	}
 	sitemapURL := strings.TrimRight(base, "/") + "/sitemap.xml"
-	resp, err := http.Get(sitemapURL)
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(sitemapURL)
 	if err != nil {
 		w.redirectErr(rw, r, "/redirects", fmt.Errorf("fetch sitemap: %v", err))
 		return
@@ -417,7 +419,7 @@ func (w *webServer) handleSitemapImport(rw http.ResponseWriter, r *http.Request)
 			Loc string `xml:"loc"`
 		} `xml:"url"`
 	}
-	if err := xml.NewDecoder(resp.Body).Decode(&ss); err != nil {
+	if err := xml.NewDecoder(io.LimitReader(resp.Body, 10<<20)).Decode(&ss); err != nil {
 		w.redirectErr(rw, r, "/redirects", fmt.Errorf("parse sitemap: %v", err))
 		return
 	}

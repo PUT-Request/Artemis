@@ -1,8 +1,8 @@
 package main
 
 import (
-	"hash/fnv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/miekg/dns"
@@ -29,9 +29,9 @@ type dnsCache struct {
 	maxTTL  time.Duration
 
 	// Stats (atomically updated, read without lock).
-	hits   uint64
-	misses uint64
-	evicts uint64
+	hits   atomic.Uint64
+	misses atomic.Uint64
+	evicts atomic.Uint64
 
 	stop chan struct{}
 }
@@ -57,7 +57,7 @@ func (c *dnsCache) get(name string, qtype uint16) *dns.Msg {
 	c.mu.RUnlock()
 
 	if !ok {
-		c.misses++
+		c.misses.Add(1)
 		return nil
 	}
 	if time.Now().After(e.expires) {
@@ -65,11 +65,11 @@ func (c *dnsCache) get(name string, qtype uint16) *dns.Msg {
 		c.mu.Lock()
 		delete(c.entries, key)
 		c.mu.Unlock()
-		c.evicts++
-		c.misses++
+		c.evicts.Add(1)
+		c.misses.Add(1)
 		return nil
 	}
-	c.hits++
+	c.hits.Add(1)
 	resp := e.resp.Copy()
 	return resp
 }
@@ -106,7 +106,7 @@ func (c *dnsCache) stats() (hits, misses, evicts, size uint64) {
 	c.mu.RLock()
 	size = uint64(len(c.entries))
 	c.mu.RUnlock()
-	return c.hits, c.misses, c.evicts, size
+	return c.hits.Load(), c.misses.Load(), c.evicts.Load(), size
 }
 
 // minTTL returns the smallest TTL across all answer, authority, and extra
@@ -145,7 +145,7 @@ func (c *dnsCache) evict() {
 	for k, e := range c.entries {
 		if now.After(e.expires) {
 			delete(c.entries, k)
-			c.evicts++
+			c.evicts.Add(1)
 		}
 	}
 }
@@ -153,15 +153,4 @@ func (c *dnsCache) evict() {
 // stop terminates the background eviction goroutine.
 func (c *dnsCache) Close() {
 	close(c.stop)
-}
-
-// cacheKeyHash is a helper for testing — returns a simple hash of the key.
-func cacheKeyHash(name string, qtype uint16) uint64 {
-	h := fnv.New64a()
-	h.Write([]byte(dns.CanonicalName(name)))
-	var buf [2]byte
-	buf[0] = byte(qtype >> 8)
-	buf[1] = byte(qtype)
-	h.Write(buf[:])
-	return h.Sum64()
 }

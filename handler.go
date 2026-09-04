@@ -132,8 +132,8 @@ func (h *handler) specialAnswer(r *dns.Msg, q dns.Question, ip net.IP) *dns.Msg 
 	m.SetReply(r)
 	m.Authoritative = true
 	m.RecursionAvailable = true
-	m.Rcode = dns.RcodeNameError
 	if q.Qtype != dns.TypeA {
+		m.Rcode = dns.RcodeSuccess
 		return m
 	}
 	m.Rcode = dns.RcodeSuccess
@@ -152,8 +152,8 @@ func (h *handler) domainAnswer(r *dns.Msg, q dns.Question, ip net.IP) *dns.Msg {
 	m.SetReply(r)
 	m.Authoritative = true
 	m.RecursionAvailable = true
-	m.Rcode = dns.RcodeNameError
 	if q.Qtype != dns.TypeA {
+		m.Rcode = dns.RcodeSuccess
 		return m
 	}
 	m.Rcode = dns.RcodeSuccess
@@ -192,10 +192,10 @@ func aRecord(name string, ip net.IP) *dns.A {
 }
 
 // forward relays the query to the first upstream that answers, retrying over
-// TCP if the UDP response is truncated. Responses are cached when a cache is
-// configured.
+// TCP if the UDP response is truncated or the UDP exchange fails. Responses are
+// cached when a cache is configured; SERVFAIL responses are never cached.
 func (h *handler) forward(q dns.Question, r *dns.Msg) *dns.Msg {
-	// Check cache first.
+	// Check cache first (SERVFAIL responses are never cached).
 	if h.cache != nil {
 		if cached := h.cache.get(q.Name, q.Qtype); cached != nil {
 			cached.Id = r.Id // match the caller's transaction ID
@@ -214,24 +214,26 @@ func (h *handler) forward(q dns.Question, r *dns.Msg) *dns.Msg {
 	var resp *dns.Msg
 	for _, up := range ups {
 		udpResp, _, err := h.udp.Exchange(r, up)
-		if err != nil {
-			log.Printf("upstream %s failed: %v", up, err)
-			continue
-		}
-		if udpResp == nil {
-			log.Printf("upstream %s returned nil response", up)
-			continue
-		}
-		if udpResp.Truncated {
+		if err != nil || udpResp == nil {
+			// UDP failed — retry with TCP before giving up on this upstream.
+			if tcpResp, _, terr := h.tcp.Exchange(r, up); terr == nil && tcpResp != nil {
+				resp = tcpResp
+			} else {
+				log.Printf("upstream %s failed (udp: %v, tcp: %v)", up, err, terr)
+				continue
+			}
+		} else if udpResp.Truncated {
 			if tcpResp, _, terr := h.tcp.Exchange(r, up); terr == nil && tcpResp != nil {
 				resp = tcpResp
 			} else {
 				resp = udpResp
 			}
+		} else {
+			resp = udpResp
+		}
+		if resp != nil {
 			break
 		}
-		resp = udpResp
-		break
 	}
 
 	if resp == nil {
@@ -239,6 +241,11 @@ func (h *handler) forward(q dns.Question, r *dns.Msg) *dns.Msg {
 		m := new(dns.Msg)
 		m.SetRcode(r, dns.RcodeServerFailure)
 		return m
+	}
+
+	// Don't cache SERVFAIL — it poisons the cache and breaks subsequent queries.
+	if resp.Rcode == dns.RcodeServerFailure {
+		return resp
 	}
 
 	// Store in cache.
