@@ -81,6 +81,6 @@ verification_regex: "AUDIT COMPLETE:.+bugs?.+found"
 
 max_working_time: 30m
 
-save_log: true
-send_log: true
-webhook_url: ${STYX_DISCORD_WEBHOOK}
+save_log: false
+send_log: false
+disable_regex: true
