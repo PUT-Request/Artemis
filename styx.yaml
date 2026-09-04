@@ -1,0 +1,86 @@
+prompt: |
+  You are auditing the Artemis repository for bugs. Artemis is a self-hosted DNS
+  server and HTTP redirect infrastructure with a web management UI, written in Go.
+
+  Architecture:
+  - DNS server (UDP/TCP on port 53) with caching and upstream forwarding
+  - DNS-over-HTTPS (DoH on port 8053)
+  - HTTP redirect front (port 80) for URL redirects and auto-mirror routing
+  - Web management UI (port 8082) with Basic Auth and CSRF protection
+  - SQLite database for configuration, request logs, and change logs
+  - Single Go binary, no CGO (pure-Go SQLite via modernc.org/sqlite)
+
+  Your task: systematically find and document bugs in two categories:
+
+  === BACKEND BUGS (Go files) ===
+  Focus on these files: main.go, handler.go, web.go, store.go, cache.go,
+  redirect.go, auto.go, live.go, doh.go, validate.go, limits.go, config.go
+
+  Look for:
+  1. Unhandled errors — any `err` return value ignored with `_` that could
+     actually fail in production (not just in test mocks)
+  2. Race conditions — shared state (a.rt, a.cfg, cache maps, store.db)
+     accessed from multiple goroutines without proper locking. Pay special
+     attention to:
+     - The runtime struct (rt) loaded via SIGHUP restart vs concurrent DNS requests
+     - Cache maps without mutex protection
+     - WebUI handlers reading config while restart() writes it
+     - The errCh channel buffer size vs goroutine leak potential
+  3. Goroutine leaks — goroutines that run forever without shutdown signaling
+  4. Resource leaks — unclosed connections, response bodies, file handles
+  5. SQL injection vectors — even though queries are "parameterized", check
+     for fmt.Sprintf in query construction or table/column name interpolation
+  6. Off-by-one or boundary errors — TTL parsing, cache eviction, buffer sizes
+  7. Nil pointer dereferences — especially in error paths where structs may
+     be partially initialized (see bindAll cleanup paths)
+  8. Time-of-check to time-of-use (TOCTOU) — file existence checks followed
+     by operations, permission changes not atomic
+  9. Improper context propagation — contexts not passed through to DB calls
+     or HTTP requests, causing shutdown to not actually cancel in-flight work
+
+  === UI/FRONTEND BUGS (templates/) ===
+  Focus on these files: templates/dashboard.html, templates/redirects.html,
+  templates/auto.html, templates/domains.html, templates/upstreams.html,
+  templates/special.html, templates/changes.html, templates/header.html,
+  templates/footer.html
+
+  Look for:
+  1. XSS vulnerabilities — any user-controlled data rendered without HTML
+     escaping (JavaScript template literals {{.Variable}} in script blocks)
+  2. CSRF token handling — tokens that aren't validated, reused, or properly
+     rotated
+  3. Missing form validation — accepted values that would cause backend panics
+     or SQL errors (empty strings, negative numbers, malformed IPs)
+  4. Broken state transitions — buttons that call endpoints not implemented
+     in web.go, or form actions that 404
+  5. Template injection — Go template directives in user-controlled data
+  6. Inconsistent UI state — the cache busting, loading spinners, error
+     display elements that reference non-existent DOM IDs
+  7. Accessibility — missing labels, broken keyboard nav (minor, flag if found)
+  8. JavaScript errors — undefined variables, event handlers attached before
+     DOM ready, fetch calls without error handling
+
+  For EACH bug found, provide:
+  - File and approximate line number
+  - Severity: critical | high | medium | low
+  - The bug description (what goes wrong and when)
+  - A suggested fix (specific code change)
+  - Whether it's reproducible with a test case
+
+  Do NOT attempt to fix the code. Only document findings.
+  End your output with: "AUDIT COMPLETE: X bugs found (Y critical, Z high, W medium, V low)"
+
+mode: read_write
+
+api_endpoint: ${STYX_API_ENDPOINT}
+api_key: ${STYX_API_KEY}
+model: ling-3.0-flash-fin-free
+max_context: 2560000
+
+verification_regex: "AUDIT COMPLETE:.+bugs?.+found"
+
+max_working_time: 30m
+
+save_log: true
+send_log: true
+webhook_url: ${STYX_DISCORD_WEBHOOK}
