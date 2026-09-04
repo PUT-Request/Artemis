@@ -61,11 +61,13 @@ func (c *dnsCache) get(name string, qtype uint16) *dns.Msg {
 		return nil
 	}
 	if time.Now().After(e.expires) {
-		// Lazy eviction — don't block on write; background sweep will clean up.
+		// Lazy eviction with double-check to avoid TOCTOU race.
 		c.mu.Lock()
-		delete(c.entries, key)
+		if e2, ok := c.entries[key]; ok && time.Now().After(e2.expires) {
+			delete(c.entries, key)
+			c.evicts.Add(1)
+		}
 		c.mu.Unlock()
-		c.evicts.Add(1)
 		c.misses.Add(1)
 		return nil
 	}

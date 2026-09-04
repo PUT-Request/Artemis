@@ -14,11 +14,12 @@ import (
 // refreshed in the background (stale-while-revalidate), so one slow mirror
 // group never stalls the whole endpoint.
 type autoServer struct {
-	app   *app
-	check func(url string) bool
-	mu    sync.Mutex // guards cache + locks
-	cache map[string]autoCacheEntry
-	locks map[string]*sync.Mutex
+	app       *app
+	check     func(url string) bool
+	mu        sync.Mutex // guards cache + locks + refreshing
+	cache     map[string]autoCacheEntry
+	locks     map[string]*sync.Mutex
+	refreshing map[string]bool // true while a background refresh goroutine is running
 }
 
 type autoCacheEntry struct {
@@ -29,10 +30,11 @@ type autoCacheEntry struct {
 func newAutoServer(a *app) *autoServer {
 	cfg := a.cfg.HTTP
 	return &autoServer{
-		app:   a,
-		check: func(url string) bool { return mirrorUp(url, cfg.CheckTimeout.Std()) },
-		cache: map[string]autoCacheEntry{},
-		locks: map[string]*sync.Mutex{},
+		app:        a,
+		check:      func(url string) bool { return mirrorUp(url, cfg.CheckTimeout.Std()) },
+		cache:      map[string]autoCacheEntry{},
+		locks:      map[string]*sync.Mutex{},
+		refreshing: map[string]bool{},
 	}
 }
 
@@ -66,12 +68,27 @@ func (a *autoServer) pick(group *AutoSiteConfig) string {
 	e, ok := a.cache[group.Name]
 	a.mu.Unlock()
 
-	if ok && time.Since(e.checkedAt) < ttl {
+	if ok && time.Until(e.checkedAt.Add(ttl)) > 0 {
 		return e.url
 	}
 	if ok {
 		// stale but usable: serve it now, refresh in the background
-		go a.refresh(group)
+		// but only if a refresh isn't already in progress for this group.
+		a.mu.Lock()
+		if !a.refreshing[group.Name] {
+			a.refreshing[group.Name] = true
+			a.mu.Unlock()
+			go func() {
+				defer func() {
+					a.mu.Lock()
+					a.refreshing[group.Name] = false
+					a.mu.Unlock()
+				}()
+				a.refresh(group)
+			}()
+		} else {
+			a.mu.Unlock()
+		}
 		return e.url
 	}
 	return a.refresh(group)
@@ -89,7 +106,7 @@ func (a *autoServer) refresh(group *AutoSiteConfig) string {
 	a.mu.Lock()
 	e, ok := a.cache[group.Name]
 	a.mu.Unlock()
-	if ok && time.Since(e.checkedAt) < a.app.cfg.HTTP.CacheTTL.Std() {
+	if ok && time.Until(e.checkedAt.Add(a.app.cfg.HTTP.CacheTTL.Std())) > 0 {
 		return e.url
 	}
 

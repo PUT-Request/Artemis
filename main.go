@@ -77,7 +77,7 @@ func main() {
 	}
 	// Surface fatal server errors (e.g. listener died).
 	go func() {
-		if err := <-a.errCh; err != nil {
+		for err := range a.errCh {
 			log.Fatalf("listener error: %v", err)
 		}
 	}()

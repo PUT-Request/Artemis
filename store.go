@@ -131,7 +131,8 @@ CREATE TABLE IF NOT EXISTS config_changes (
 		for _, col := range []string{"answer_ip", "http_port"} {
 			if cols[col] {
 				if _, err := db.Exec(`ALTER TABLE redirects DROP COLUMN ` + col); err != nil {
-					log.Printf("drop redirects.%s: %v", col, err)
+					db.Close()
+					return nil, fmt.Errorf("migrate redirects: drop %s: %w", col, err)
 				}
 			}
 		}

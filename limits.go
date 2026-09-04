@@ -45,7 +45,16 @@ func (l *rateLimiter) allow(ip string) bool {
 	c, ok := l.counts[ip]
 	if !ok || now.Sub(c.start) >= time.Second {
 		if len(l.counts) > 100_000 {
-			return false // hard cap on tracked IPs
+			// Aggressively clean up expired entries before rejecting.
+			for k, v := range l.counts {
+				if now.Sub(v.start) > 2*time.Minute {
+					delete(l.counts, k)
+				}
+			}
+			// If still over cap after cleanup, reject (extreme flood scenario).
+			if len(l.counts) > 100_000 {
+				return false
+			}
 		}
 		l.counts[ip] = &ipCount{start: now, count: 1}
 		return true
