@@ -49,7 +49,9 @@ func newWebServer(a *app) *webServer {
 
 func (w *webServer) refreshCSRF() {
 	b := make([]byte, 16)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		log.Printf("refreshCSRF: rand.Read: %v", err)
+	}
 	w.csrfMu.Lock()
 	w.csrfToken = hex.EncodeToString(b)
 	w.csrfMu.Unlock()
