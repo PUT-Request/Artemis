@@ -50,11 +50,12 @@ type HTTPConfig struct {
 }
 
 type ServerConfig struct {
-	Listen     string   `yaml:"listen"`
-	Timeout    Duration `yaml:"timeout"`
-	ACL        []string `yaml:"acl"`
-	RateLimit  int      `yaml:"rate_limit"`
-	DNSCacheTTL Duration `yaml:"dns_cache_ttl"`
+	Listen     string      `yaml:"listen"`
+	Timeout    Duration    `yaml:"timeout"`
+	ACL        []string    `yaml:"acl"`
+	RateLimit  int         `yaml:"rate_limit"`
+	DNSCacheTTL Duration   `yaml:"dns_cache_ttl"`
+	DNSSEC     DNSSECConfig `yaml:"dnssec"`
 }
 
 type WebUIConfig struct {
@@ -92,6 +93,11 @@ type SitemapSyncConfig struct {
 	Interval Duration       `yaml:"interval"` // default: 1h
 	Sources  []SitemapSource `yaml:"sources"`
 }
+// DNSSECConfig controls DNSSEC validation behavior.
+type DNSSECConfig struct {
+	Enabled bool `yaml:"enabled"`
+}
+
 // Duration wraps time.Duration so yaml.v3 can parse strings like "5s".
 type Duration time.Duration
 

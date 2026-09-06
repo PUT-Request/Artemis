@@ -238,6 +238,14 @@ func (w *webServer) pageStats(rw http.ResponseWriter, r *http.Request) {
 	}
 	md.WriteString("\n")
 
+	// DNSSEC status
+	md.WriteString("## DNSSEC\n\n")
+	if w.app.handler.dnssec.enabled {
+		md.WriteString("Status: **enabled** (validation active)\n\n")
+	} else {
+		md.WriteString("Status: disabled\n\n")
+	}
+
 	io.WriteString(rw, md.String())
 }
 func (w *webServer) route(rw http.ResponseWriter, r *http.Request) {

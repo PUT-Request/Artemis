@@ -11,14 +11,15 @@ import (
 )
 
 type handler struct {
-	cfg   *Config
-	rt    *runtime
-	store *Store
-	udp   *dns.Client
-	tcp   *dns.Client
-	acl   []*net.IPNet
-	rl    *rateLimiter
-	cache *dnsCache
+	cfg     *Config
+	rt      *runtime
+	store   *Store
+	udp     *dns.Client
+	tcp     *dns.Client
+	acl     []*net.IPNet
+	rl      *rateLimiter
+	cache   *dnsCache
+	dnssec  *dnssecValidator
 }
 
 func newHandler(cfg *Config, rt *runtime, store *Store) *handler {
@@ -34,6 +35,10 @@ func newHandler(cfg *Config, rt *runtime, store *Store) *handler {
 	if cfg.Server.DNSCacheTTL.Std() > 0 {
 		h.cache = newDNSCache(cfg.Server.DNSCacheTTL.Std())
 		log.Printf("DNS cache enabled (TTL %s)", cfg.Server.DNSCacheTTL.Std())
+	}
+	h.dnssec = newDNSSECValidator(cfg.Server.DNSSEC.Enabled)
+	if cfg.Server.DNSSEC.Enabled {
+		log.Printf("DNSSEC validation enabled")
 	}
 	log.Printf("handler: %d upstream(s) loaded", len(rt.Upstreams()))
 	for _, cidr := range cfg.Server.ACL {
@@ -203,6 +208,11 @@ func (h *handler) forward(q dns.Question, r *dns.Msg) *dns.Msg {
 		}
 	}
 
+	// Set DO (DNSSEC OK) bit to request DNSSEC data from upstreams
+	if h.dnssec.enabled {
+		r.SetEdns0(4096, true)
+	}
+
 	ups := h.rt.Upstreams()
 	if len(ups) == 0 {
 		log.Printf("forward: no upstreams configured for %s", q.Name)
@@ -240,6 +250,14 @@ func (h *handler) forward(q dns.Question, r *dns.Msg) *dns.Msg {
 		log.Printf("forward: all upstreams failed for %s", q.Name)
 		m := new(dns.Msg)
 		m.SetRcode(r, dns.RcodeServerFailure)
+		return m
+	}
+
+	// Validate DNSSEC before caching
+	if !h.dnssec.Validate(resp) {
+		log.Printf("dnssec: validation failed for %s, returning SERVFAIL", q.Name)
+		m := new(dns.Msg)
+		m.SetRcode(resp, dns.RcodeServerFailure)
 		return m
 	}
 
