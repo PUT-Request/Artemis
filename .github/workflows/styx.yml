@@ -5,6 +5,11 @@ on:
     branches: [master]
   workflow_dispatch:
 
+# Cancel previous Styx run when a new push arrives
+concurrency:
+  group: styx-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   review:
     # Skip if triggered by the bot itself (PR merge) to avoid infinite loops
