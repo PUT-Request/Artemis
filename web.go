@@ -182,7 +182,7 @@ func (w *webServer) pageStats(rw http.ResponseWriter, r *http.Request) {
 
 	var md strings.Builder
 	md.WriteString("# Artemis Stats\n\n")
-	md.WriteString(fmt.Sprintf("Generated: %s\n\n", time.Now().UTC().Format("2006-01-0215:04:05 UTC")))
+	md.WriteString(fmt.Sprintf("Generated: %s\n\n", time.Now().UTC().Format("2006-01-02 15:04:05 UTC")))
 
 	// .fy shortcuts grouped by TLD
 	byTLD := map[string][]RedirectConfig{}
