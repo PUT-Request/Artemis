@@ -53,7 +53,10 @@ func (a *autoServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	location := a.pick(group)
 	if a.app.store != nil {
-		clientIP, _, _ := net.SplitHostPort(r.RemoteAddr)
+		clientIP, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			clientIP = r.RemoteAddr
+		}
 		a.app.store.LogIP(clientIP)
 	}
 	http.Redirect(w, r, location, http.StatusFound)
