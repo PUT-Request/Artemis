@@ -170,7 +170,9 @@ func (s *Store) seedDefaults() error {
 			return err
 		}
 	}
-	if v, _ := s.getSetting("seeded"); v == "1" {
+	if v, err := s.getSetting("seeded"); err != nil {
+		log.Printf("seedDefaults: getSetting seeded: %v", err)
+	} else if v == "1" {
 		return nil
 	}
 	defaults := []string{"94.140.14.14:53", "1.1.1.1:53", "8.8.8.8:53"}
