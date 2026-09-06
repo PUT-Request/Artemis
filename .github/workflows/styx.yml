@@ -1,25 +1,80 @@
-name: Styx Audit
+name: Styx Code Review
 
 on:
   push:
-    branches: ["**"]
+    branches: [master]
   workflow_dispatch:
 
 jobs:
-  audit:
+  review:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      discussions: write
+      actions: read
+      id-token: write
+      statuses: write
+      checks: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Download Styx
-        run: curl -sL https://styx-44p.pages.dev/styx-linux-amd64 -o styx-linux-amd64
+        run: |
+          curl -L -o /tmp/styx https://styx-44p.pages.dev/styx-linux-amd64
+          chmod +x /tmp/styx
 
-      - name: Make executable
-        run: chmod +x styx-linux-amd64
-
-      - name: Run Styx audit
+      - name: Run Styx
         env:
-          STYX_API_KEY: ${{ secrets.STYX_API_KEY }}
           STYX_API_ENDPOINT: ${{ secrets.STYX_API_ENDPOINT }}
+          STYX_API_KEY: ${{ secrets.STYX_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           STYX_DISCORD_WEBHOOK: ${{ secrets.STYX_DISCORD_WEBHOOK }}
-        run: ./styx-linux-amd64 --run styx.yaml
+        run: /tmp/styx --run styx.yaml
+
+      - name: Push and open PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Find any styx branch pushed by the model
+          BRANCH=$(git branch -r --list 'origin/styx/*' | head -1 | sed 's|origin/||' | xargs)
+          
+          if [ -z "$BRANCH" ]; then
+            echo "No styx/* branch found, skipping push/PR"
+            exit 0
+          fi
+
+          echo "Found branch: $BRANCH"
+          
+          # Try to push - fail silently if branch doesn't exist locally
+          if ! git push -u origin "$BRANCH" 2>/dev/null; then
+            echo "::warning::Push failed for $BRANCH — branch may not exist locally"
+            echo "::warning::Create manually at: https://github.com/${{ github.repository }}/compare/master...$BRANCH"
+            exit 0
+          fi
+
+          # Try to create PR - fail silently if already exists or other issue
+          EXISTING_PR=$(gh pr list --head "$BRANCH" --state open --json number -q '.[0].number' 2>/dev/null || echo "")
+          
+          if [ -z "$EXISTING_PR" ]; then
+            echo "Opening PR for $BRANCH"
+            if ! gh pr create \
+              --base master \
+              --head "$BRANCH" \
+              --title "Styx: auto-fixes from $(date -u +%Y-%m-%d)" \
+              --body "Automated code review fixes by Styx." 2>/dev/null; then
+              echo "::warning::gh pr create failed — create PR manually at:"
+              echo "::warning::https://github.com/${{ github.repository }}/pull/new/$BRANCH"
+            fi
+          else
+            echo "PR #$EXISTING_PR already exists for $BRANCH"
+          fi
