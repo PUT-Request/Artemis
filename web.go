@@ -191,6 +191,7 @@ func (w *webServer) render(rw http.ResponseWriter, r *http.Request, name string,
 	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
 	rw.Header().Set("Cache-Control", "no-store")
 	rw.Header().Set("X-Frame-Options", "DENY")
+	rw.Header().Set("Referrer-Policy", "no-referrer")
 	rw.Header().Set("Content-Security-Policy",
 		"default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; "+
 			"style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "+
