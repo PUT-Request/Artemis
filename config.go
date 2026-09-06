@@ -16,6 +16,7 @@ type Config struct {
 	Server   ServerConfig   `yaml:"server"`
 	WebUI    WebUIConfig    `yaml:"webui"`
 	DoH      DoHConfig      `yaml:"doh"`
+	DoT      DoTConfig      `yaml:"dot"`
 	HTTP     HTTPConfig     `yaml:"http"`
 	Database DatabaseConfig `yaml:"database"`
 }
@@ -24,6 +25,14 @@ type DoHConfig struct {
 	Enabled bool   `yaml:"enabled"`
 	Listen  string `yaml:"listen"`
 	Path    string `yaml:"path"`
+}
+
+// DoTConfig configures the DNS-over-TLS server (RFC 7858).
+type DoTConfig struct {
+	Enabled  bool   `yaml:"enabled"`
+	Listen   string `yaml:"listen"`
+	CertFile string `yaml:"cert_file"`
+	KeyFile  string `yaml:"key_file"`
 }
 
 // HTTPConfig drives the single HTTP front that serves URL redirects
@@ -109,6 +118,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.DoH.Path == "" {
 		c.DoH.Path = "/dns-query"
+	}
+	if c.DoT.Listen == "" {
+		c.DoT.Listen = "127.0.0.1:853"
 	}
 	// Default HTTP.Enabled before Listen: only auto-enable when the http block
 	// was entirely omitted (both Enabled and Listen are zero values). An explicit

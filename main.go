@@ -26,6 +26,7 @@ type app struct {
 	webUI        *webServer
 	mu           sync.Mutex
 	dnsServers   []*dns.Server
+	dotServers   []*dns.Server
 	httpServers  []*http.Server
 	shuttingDown atomic.Bool
 	errCh        chan error
@@ -71,6 +72,9 @@ func main() {
 	}
 
 	log.Printf("Artemis DNS listening on %s (udp+tcp)", cfg.Server.Listen)
+	if cfg.DoT.Enabled {
+		log.Printf("DNS-over-TLS (DoT) enabled on %s", cfg.DoT.Listen)
+	}
 	if cfg.WebUI.Enabled {
 		go a.webUI.Serve()
 		log.Printf("Web UI listening on %s", cfg.WebUI.Listen)
@@ -169,6 +173,19 @@ func (a *app) bindAll() ([]*dns.Server, []*http.Server, error) {
 		}
 		httpS = append(httpS, doh)
 	}
+
+	// DNS-over-TLS (DOT) servers
+	var dotS []*dns.Server
+	if a.cfg.DoT.Enabled {
+		dot, err := a.startDOT()
+		if err != nil {
+			cleanup()
+			return nil, nil, err
+		}
+		dotS = append(dotS, dot)
+	}
+
+	a.dotServers = dotS
 	return dnsS, httpS, nil
 }
 
@@ -278,6 +295,10 @@ func (a *app) restart() error {
 		s.ShutdownContext(ctx)
 	}
 	a.dnsServers = nil
+	for _, s := range a.dotServers {
+		s.ShutdownContext(ctx)
+	}
+	a.dotServers = nil
 	stopHTTPServers(a.httpServers)
 	a.httpServers = nil
 	if a.webUI != nil {
@@ -307,13 +328,18 @@ func (a *app) stop(ctx context.Context) {
 	// an in-flight WebUI restart request can complete instead of deadlocking.
 	a.mu.Lock()
 	dnsS := a.dnsServers
+	dotS := a.dotServers
 	httpS := a.httpServers
 	a.dnsServers = nil
+	a.dotServers = nil
 	a.httpServers = nil
 	webUI := a.webUI
 	a.mu.Unlock()
 
 	for _, s := range dnsS {
+		s.ShutdownContext(ctx)
+	}
+	for _, s := range dotS {
 		s.ShutdownContext(ctx)
 	}
 	stopHTTPServers(httpS)
