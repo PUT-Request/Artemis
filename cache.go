@@ -33,7 +33,8 @@ type dnsCache struct {
 	misses atomic.Uint64
 	evicts atomic.Uint64
 
-	stop chan struct{}
+	stop      chan struct{}
+	closeOnce sync.Once
 }
 
 // newDNSCache creates a cache with the given max TTL and starts a background
@@ -152,7 +153,10 @@ func (c *dnsCache) evict() {
 	}
 }
 
-// stop terminates the background eviction goroutine.
+// Close terminates the background eviction goroutine.
+// Safe to call multiple times.
 func (c *dnsCache) Close() {
-	close(c.stop)
+	c.closeOnce.Do(func() {
+		close(c.stop)
+	})
 }
