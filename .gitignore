@@ -125,3 +125,4 @@ artemis
 
 # Pi workspace
 .pi/
+.styx-template.md
