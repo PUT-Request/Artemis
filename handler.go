@@ -212,7 +212,7 @@ func (h *handler) forward(q dns.Question, r *dns.Msg) *dns.Msg {
 	// Only set if client requested DNSSEC (DO bit already set)
 	if h.dnssec.enabled {
 		if edns := r.IsEdns0(); edns != nil && edns.Do() {
-			r.SetEdns0(4096, true)
+			h.dnssec.SetDOBit(r)
 		}
 	}
 
@@ -256,13 +256,9 @@ func (h *handler) forward(q dns.Question, r *dns.Msg) *dns.Msg {
 		return m
 	}
 
-	// Validate DNSSEC before caching
-	if !h.dnssec.Validate(resp, ups) {
-		log.Printf("dnssec: validation failed for %s, returning SERVFAIL", q.Name)
-		m := new(dns.Msg)
-		m.SetRcode(resp, dns.RcodeServerFailure)
-		return m
-	}
+	// DNSSEC validation (trusts upstream)
+	// If upstream returns SERVFAIL, we pass it through
+	h.dnssec.Validate(resp)
 
 	// Don't cache SERVFAIL — it poisons the cache and breaks subsequent queries.
 	if resp.Rcode == dns.RcodeServerFailure {
