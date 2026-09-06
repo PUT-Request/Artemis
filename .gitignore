@@ -117,3 +117,4 @@ log/
 *.pid
 *.seed
 *.pid.lock
+deploy-dot.sh
