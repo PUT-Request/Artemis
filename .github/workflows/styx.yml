@@ -7,6 +7,8 @@ on:
 
 jobs:
   review:
+    # Skip if triggered by the bot itself (PR merge) to avoid infinite loops
+    if: "!contains(github.event.head_commit.message, 'Styx:') && !contains(github.event.head_commit.message, 'styx/')"
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -22,6 +24,11 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: true
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
 
       - name: Configure git
         run: |

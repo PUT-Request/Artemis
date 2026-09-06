@@ -129,6 +129,11 @@ func authOK(got, want string) bool {
 
 func (w *webServer) basicAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		// Skip auth for public endpoints
+		if r.URL.Path == "/stats" || r.URL.Path == "/health" {
+			next.ServeHTTP(rw, r)
+			return
+		}
 		ip := httpClientIP(r)
 		if !w.limiter.allow(ip) {
 			time.Sleep(time.Duration(400+200*w.limiterFailCount(ip)) * time.Millisecond)
@@ -164,6 +169,77 @@ func (w *webServer) limiterFailCount(ip string) int {
 
 // ---------------- routing / rendering ----------------
 
+
+
+// pageStats serves a plain-text markdown document with live stats:
+// all .fy shortcuts, top users (masked IPs), and .auto failover status.
+func (w *webServer) pageStats(rw http.ResponseWriter, r *http.Request) {
+	rw.Header().Set("Content-Type", "text/plain; charset=utf-8")
+
+	redirects := w.app.rt.Redirects()
+	autoSites := w.app.rt.AutoSites()
+	topIPs := w.app.store.TopIPs(3)
+
+	var md strings.Builder
+	md.WriteString("# Artemis Stats\n\n")
+	md.WriteString(fmt.Sprintf("Generated: %s\n\n", time.Now().UTC().Format("2006-01-0215:04:05 UTC")))
+
+	// .fy shortcuts grouped by TLD
+	byTLD := map[string][]RedirectConfig{}
+	for _, rc := range redirects {
+		parts := strings.SplitN(rc.Domain, ".", 2)
+		if len(parts) == 2 {
+			tld := parts[1]
+			byTLD[tld] = append(byTLD[tld], rc)
+		}
+	}
+	for tld, rcs := range byTLD {
+		md.WriteString(fmt.Sprintf("## .%s Shortcuts (%d)\n\n", tld, len(rcs)))
+		for _, rc := range rcs {
+			md.WriteString(fmt.Sprintf("- %s → %s\n", rc.Domain, rc.Target))
+		}
+		md.WriteString("\n")
+	}
+
+	// Top users
+	md.WriteString("## Top Users\n\n")
+	if len(topIPs) == 0 {
+		md.WriteString("No requests logged yet.\n\n")
+	} else {
+		for _, ic := range topIPs {
+			md.WriteString(fmt.Sprintf("- %s: %d requests\n", maskIP(ic.IP), ic.Count))
+		}
+		md.WriteString("\n")
+	}
+
+	// .auto failover
+	md.WriteString("## .auto Failover Status\n\n")
+	if len(autoSites) == 0 {
+		md.WriteString("No .auto sites configured.\n\n")
+	} else {
+		for _, as := range autoSites {
+			status := "enabled"
+			if !as.Enabled {
+				status = "disabled"
+			}
+			md.WriteString(fmt.Sprintf("- %s.auto: %d mirrors [%s]\n", as.Name, len(as.Sites), status))
+			for _, site := range as.Sites {
+				md.WriteString(fmt.Sprintf("  - %s\n", site))
+			}
+		}
+		md.WriteString("\n")
+	}
+
+	// Upstreams
+	upstreams := w.app.rt.Upstreams()
+	md.WriteString("## DNS Upstreams\n\n")
+	for _, u := range upstreams {
+		md.WriteString(fmt.Sprintf("- %s\n", u))
+	}
+	md.WriteString("\n")
+
+	io.WriteString(rw, md.String())
+}
 func (w *webServer) route(rw http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/", "/dashboard":
@@ -182,6 +258,8 @@ func (w *webServer) route(rw http.ResponseWriter, r *http.Request) {
 		w.handleRestart(rw, r)
 	case "/changes":
 		w.pageChanges(rw, r)
+	case "/stats":
+		w.pageStats(rw, r)
 	default:
 		http.NotFound(rw, r)
 	}

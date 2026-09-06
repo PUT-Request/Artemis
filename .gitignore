@@ -118,3 +118,10 @@ log/
 *.seed
 *.pid.lock
 deploy-dot.sh
+
+# Build artifacts
+artemis-linux-amd64
+artemis
+
+# Pi workspace
+.pi/

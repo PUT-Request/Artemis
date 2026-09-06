@@ -18,8 +18,30 @@ prompt: |
   1. Create a branch: git checkout -b styx/fixes-$(date +%s)
   2. Audit all files for bugs
   3. Fix each bug you find
-  4. Commit each fix with a descriptive message
-  5. Push the branch
+  4. After EVERY fix, verify it compiles: go build -o /tmp/artemis-check
+  5. Run tests: go test ./...-v -count=1
+  6. If compilation or tests fail, fix the issue before committing
+  7. Commit each fix with a descriptive message
+  8. Push the branch only after all fixes compile and pass tests
+
+  MANDATORY BUILD VERIFICATION:
+  - Run `go build -o /tmp/artemis-verify` after every change
+  - Run `go vet ./...` to catch common issues
+  - Run `go test ./...-timeout 60s` to verify tests pass
+  - NEVER commit code that doesn't compile
+  - NEVER push a branch with failing tests
+
+  The repository uses:
+  - Go1.25+ with modules
+  - modernc.org/sqlite (pure Go, no CGO)
+  - github.com/miekg/dns for DNS handling
+  - Standard library for HTTP/TLS/XML
+
+  Common issues to watch for:
+  - Missing imports (encoding/xml, io, net/url, strings)
+  - Duplicate function names across files
+  - Unused variables or imports
+  - Type mismatches in function signatures
 
   === BACKEND BUGS (Go files) ===
   Focus on these files: main.go, handler.go, web.go, store.go, cache.go,

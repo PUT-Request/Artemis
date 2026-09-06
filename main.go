@@ -2,13 +2,17 @@ package main
 
 import (
 	"context"
+	"encoding/xml"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -78,6 +82,10 @@ func main() {
 	if cfg.WebUI.Enabled {
 		go a.webUI.Serve()
 		log.Printf("Web UI listening on %s", cfg.WebUI.Listen)
+	}
+	if cfg.SitemapSync.Enabled {
+		go a.sitemapSyncLoop()
+		log.Printf("Sitemap sync enabled (interval: %s)", cfg.SitemapSync.Interval.Std())
 	}
 	// Surface fatal server errors (e.g. listener died).
 	go func() {
@@ -347,3 +355,106 @@ func (a *app) stop(ctx context.Context) {
 		webUI.server.Shutdown(ctx)
 	}
 }
+
+// sitemapSyncLoop runs periodic sitemap imports for all configured sources.
+func (a *app) sitemapSyncLoop() {
+	interval := a.cfg.SitemapSync.Interval.Std()
+	if interval < time.Minute {
+		interval = time.Minute
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	// Run immediately on start.
+	a.syncAllSitemaps()
+
+	for range ticker.C {
+		if a.shuttingDown.Load() {
+			return
+		}
+		a.syncAllSitemaps()
+	}
+}
+
+// syncAllSitemaps fetches and imports sitemaps for all configured sources.
+func (a *app) syncAllSitemaps() {
+	for _, src := range a.cfg.SitemapSync.Sources {
+		inserted, deleted, err := a.syncSitemap(src.URL, src.TLD)
+		if err != nil {
+			log.Printf("sitemap sync %s failed: %v", src.URL, err)
+		} else {
+			log.Printf("sitemap sync %s -> .%s: +%d -%d", src.URL, src.TLD, inserted, deleted)
+		}
+	}
+}
+
+// syncSitemap fetches a sitemap, upserts redirects, and removes stale ones.
+func (a *app) syncSitemap(baseURL, tld string) (int, int, error) {
+	sitemapURL := strings.TrimRight(baseURL, "/") + "/sitemap.xml"
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(sitemapURL)
+	if err != nil {
+		return 0, 0, fmt.Errorf("fetch: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 0, 0, fmt.Errorf("fetch: HTTP %d", resp.StatusCode)
+	}
+
+	var ss struct {
+		URLs []struct {
+			Loc string `xml:"loc"`
+		} `xml:"url"`
+	}
+	if err := xml.NewDecoder(io.LimitReader(resp.Body, 10<<20)).Decode(&ss); err != nil {
+		return 0, 0, fmt.Errorf("parse: %w", err)
+	}
+
+	user := "sitemap-sync"
+	newDomains := map[string]bool{}
+	inserted := 0
+
+	for _, u := range ss.URLs {
+		loc := strings.TrimSpace(u.Loc)
+		if loc == "" {
+			continue
+		}
+		if err := validateRedirectURL(loc); err != nil {
+			continue
+		}
+		p, err := url.Parse(loc)
+		if err != nil || p.Path == "" {
+			continue
+		}
+		label := deriveLabel(p.Path)
+		if label == "" {
+			continue
+		}
+		domain := label + "." + tld
+		newDomains[domain] = true
+		rc := RedirectConfig{Domain: domain, Target: loc, QueryParam: ""}
+		if err := a.store.UpsertRedirect(user, rc); err == nil {
+			inserted++
+		}
+	}
+
+	// Remove stale redirects no longer in the sitemap.
+	deleted := 0
+	existing, err := a.store.ListRedirectsByTLD(tld)
+	if err == nil {
+		for _, rc := range existing {
+			if !newDomains[rc.Domain] {
+				if err := a.store.DeleteRedirect(user, rc.Domain); err == nil {
+					deleted++
+				}
+			}
+		}
+	}
+
+	if err := a.rt.reload(a.store); err != nil {
+		log.Printf("sitemap sync reload: %v", err)
+	}
+
+	return inserted, deleted, nil
+}
+

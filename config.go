@@ -17,6 +17,7 @@ type Config struct {
 	WebUI    WebUIConfig    `yaml:"webui"`
 	DoH      DoHConfig      `yaml:"doh"`
 	DoT      DoTConfig      `yaml:"dot"`
+	SitemapSync SitemapSyncConfig `yaml:"sitemap_sync"`
 	HTTP     HTTPConfig     `yaml:"http"`
 	Database DatabaseConfig `yaml:"database"`
 }
@@ -77,6 +78,20 @@ type RedirectConfig struct {
 	QueryParam string `json:"query_param"`
 }
 
+
+
+// SitemapSource defines a sitemap URL and its target TLD for auto-sync.
+type SitemapSource struct {
+	URL string `yaml:"url"` // e.g. "https://fmhy.net"
+	TLD string `yaml:"tld"` // e.g. "fy"
+}
+
+// SitemapSyncConfig configures periodic sitemap re-import.
+type SitemapSyncConfig struct {
+	Enabled  bool           `yaml:"enabled"`
+	Interval Duration       `yaml:"interval"` // default: 1h
+	Sources  []SitemapSource `yaml:"sources"`
+}
 // Duration wraps time.Duration so yaml.v3 can parse strings like "5s".
 type Duration time.Duration
 
@@ -121,6 +136,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.DoT.Listen == "" {
 		c.DoT.Listen = "127.0.0.1:853"
+	}
+	if c.SitemapSync.Interval == 0 {
+		c.SitemapSync.Interval = Duration(1 * time.Hour)
 	}
 	// Default HTTP.Enabled before Listen: only auto-enable when the http block
 	// was entirely omitted (both Enabled and Listen are zero values). An explicit

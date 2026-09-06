@@ -261,6 +261,50 @@ func (s *Store) capRequestLog() {
 	}
 }
 
+
+// TopIPs returns the top N client IPs by request count, masked for privacy.
+type IPCount struct {
+	IP    string
+	Count int
+}
+
+func (s *Store) TopIPs(limit int) []IPCount {
+	if s == nil {
+		return nil
+	}
+	rows, err := s.db.Query(
+		`SELECT client_ip, count FROM request_log ORDER BY count DESC LIMIT ?`, limit)
+	if err != nil {
+		log.Printf("top ips: %v", err)
+		return nil
+	}
+	defer rows.Close()
+	var result []IPCount
+	for rows.Next() {
+		var ic IPCount
+		if err := rows.Scan(&ic.IP, &ic.Count); err != nil {
+			continue
+		}
+		result = append(result, ic)
+	}
+	return result
+}
+
+// maskIP obscures the last two octets of an IPv4 address for privacy.
+// 192.168.1.100 -> 192.168.*.*
+func maskIP(ip string) string {
+	parts := strings.Split(ip, ".")
+	if len(parts) == 4 {
+		return parts[0] + "." + parts[1] + ".*.*"
+	}
+	// IPv6: just show first 4 groups
+	parts6 := strings.Split(ip, ":")
+	if len(parts6) > 4 {
+		return strings.Join(parts6[:4], ":") + ":*:*:*:*"
+	}
+	return ip
+}
+
 // Prune deletes request-log rows not seen in retentionDays (0 disables).
 func (s *Store) Prune(retentionDays int) {
 	if retentionDays <= 0 {
@@ -508,6 +552,41 @@ func (s *Store) UpdateDomain(user string, oldDomain string, d DomainConfig) erro
 	return nil
 }
 
+
+
+// DeleteRedirectsByTLD removes all redirects whose domain ends with .tld.
+// Returns the number of rows deleted.
+func (s *Store) DeleteRedirectsByTLD(user, tld string) (int, error) {
+	suffix := "." + tld
+	result, err := s.db.Exec(`DELETE FROM redirects WHERE domain LIKE '%' || ?`, suffix)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := result.RowsAffected()
+	if n > 0 {
+		s.RecordChange(user, "sitemap-sync", fmt.Sprintf("removed %d .%s redirects", n, tld))
+	}
+	return int(n), nil
+}
+
+// ListRedirectsByTLD returns all redirects for a given TLD.
+func (s *Store) ListRedirectsByTLD(tld string) ([]RedirectConfig, error) {
+	suffix := "." + tld
+	rows, err := s.db.Query(`SELECT domain, target, query_param FROM redirects WHERE domain LIKE '%' || ? ORDER BY domain`, suffix)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []RedirectConfig
+	for rows.Next() {
+		var rc RedirectConfig
+		if err := rows.Scan(&rc.Domain, &rc.Target, &rc.QueryParam); err != nil {
+			continue
+		}
+		result = append(result, rc)
+	}
+	return result, nil
+}
 func (s *Store) DeleteDomain(user, domain string) error {
 	res, err := s.db.Exec(`DELETE FROM domains WHERE domain = ?`, domain)
 	if err != nil {
